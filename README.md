@@ -54,8 +54,8 @@ Transform stock market data into musical compositions! This Streamlit app conver
    - Import into FL Studio, Ableton, or your preferred DAW
    - Add effects, instruments, and arrangement
 
-## 
-Waait no more ai slop
+## Deployment
+You need `packages.txt` to install fluidsynth for stcloud to wokr. 
 
 ---
 
