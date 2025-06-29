@@ -783,7 +783,6 @@ def generate_volatile_progression_music_pattern(scale_name, progression_str, cho
             chord_transposed = chord + semitones
             arp = custom_arpeggiate_chord(chord_transposed, interval, chord_duration)
             arps.append(arp)
-            print(arp)
         
         # Step 6: Combine all arpeggios into a piece
         if arps:
