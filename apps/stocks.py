@@ -1,3 +1,4 @@
+# type: ignore
 import streamlit as st
 from streamlit import session_state as state
 import yfinance as yf
@@ -258,8 +259,8 @@ def generate_sample_data(days=30):
     
     # Generate realistic stock data
     base_price = 100
-    prices = []
-    volumes = []
+    price_values = [base_price]  # Track actual price values
+    data_rows = []
     
     for i in range(days):
         # Random walk for price
@@ -267,7 +268,7 @@ def generate_sample_data(days=30):
             price = base_price
         else:
             change = np.random.normal(0, 2)  # Daily change with std dev of 2
-            price = prices[-1] * (1 + change/100)
+            price = price_values[-1] * (1 + change/100)
         
         # Generate OHLC from base price
         daily_volatility = np.random.uniform(0.5, 2.0)
@@ -279,16 +280,16 @@ def generate_sample_data(days=30):
         # Generate volume
         volume = np.random.uniform(1000000, 5000000)
         
-        prices.append({
+        data_rows.append({
             'Open': open_price,
             'High': high_price,
             'Low': low_price,
             'Close': close_price,
             'Volume': volume
         })
-        volumes.append(volume)
+        price_values.append(close_price)
     
-    df = pd.DataFrame(prices, index=dates)
+    df = pd.DataFrame(data_rows, index=dates)
     return df
 
 def data_input_form():
@@ -314,12 +315,13 @@ def data_input_form():
             end_date = datetime.now()
             
         elif data_source == 'Upload CSV':
-            uploaded_file = st.file_uploader(
-                "Upload CSV file",
-                type=['csv'],
-                help="CSV should have columns: Date, Open, High, Low, Close, Volume"
-            )
-            ticker = st.text_input('Stock Name (for file naming)', value='CUSTOM', placeholder='e.g., MY_STOCK')
+            st.info("📁 **CSV Upload - Coming Soon!**")
+            st.write("This feature will allow you to upload your own stock data CSV files.")
+            st.write("For now, please use Yahoo Finance or Sample Data options.")
+            
+            # Disable the upload functionality
+            uploaded_file = None
+            ticker = st.text_input('Stock Name (for file naming)', value='CUSTOM', placeholder='e.g., MY_STOCK', disabled=True)
             
         else:  # Sample Data
             days_back = st.selectbox('Sample Data Period', [7, 14, 30, 60, 90], index=2)
@@ -341,16 +343,8 @@ def data_input_form():
                         st.success(f"✅ Successfully loaded {len(stock_data)} days of data for {ticker}")
             
             elif data_source == 'Upload CSV':
-                if uploaded_file is None:
-                    st.error('Please upload a CSV file')
-                    return
-                
-                with st.spinner("Parsing CSV data..."):
-                    stock_data = parse_csv_data(uploaded_file)
-                    if stock_data is not None:
-                        state['stock_data'] = stock_data
-                        state['ticker'] = ticker
-                        st.success(f"✅ Successfully loaded {len(stock_data)} days of data from CSV")
+                st.warning("📁 CSV upload is not yet available. Please use Yahoo Finance or Sample Data.")
+                return
             
             else:  # Sample Data
                 with st.spinner("Generating sample data..."):
@@ -375,8 +369,11 @@ def data_visualization():
     with col2:
         try:
             avg_close = stock_data['Close'].mean()
+            # Handle numpy/pandas types properly
             if hasattr(avg_close, 'item'):
-                avg_close = avg_close.item()
+                avg_close = float(avg_close.item())
+            else:
+                avg_close = float(avg_close)
             st.metric("Avg Close", f"${avg_close:.2f}")
         except:
             st.metric("Avg Close", "N/A")
@@ -384,7 +381,9 @@ def data_visualization():
         try:
             max_close = stock_data['Close'].max()
             if hasattr(max_close, 'item'):
-                max_close = max_close.item()
+                max_close = float(max_close.item())
+            else:
+                max_close = float(max_close)
             st.metric("Max Close", f"${max_close:.2f}")
         except:
             st.metric("Max Close", "N/A")
@@ -392,7 +391,9 @@ def data_visualization():
         try:
             min_close = stock_data['Close'].min()
             if hasattr(min_close, 'item'):
-                min_close = min_close.item()
+                min_close = float(min_close.item())
+            else:
+                min_close = float(min_close)
             st.metric("Min Close", f"${min_close:.2f}")
         except:
             st.metric("Min Close", "N/A")
@@ -406,7 +407,19 @@ def data_visualization():
     st.dataframe(stock_data.tail(10))
 
 def music_generation_form():
-    """Form for generating music from stock data"""
+    """Form for generating music from stock data with multiple methods"""
+    
+    # Create tabs for different music generation methods
+    tab1, tab2 = st.tabs(["🎵 Price to Pitch", "🎼 Volatile Progression"])
+    
+    with tab1:
+        price_to_pitch_form()
+    
+    with tab2:
+        volatile_progression_form()
+
+def price_to_pitch_form():
+    """Original price-to-pitch music generation method"""
     preset_name = st.selectbox(
         'Quick Start Preset',
         options=["Custom"] + list(MUSICAL_PRESETS.keys()),
@@ -418,10 +431,10 @@ def music_generation_form():
     if preset_name != "Custom":
         preset = MUSICAL_PRESETS[preset_name]
         st.info(f"🎵 {preset_name} preset: {preset['description']}")
-        # st.write(f"**Scale:** {preset['scale']} | **BPM:** {preset['bpm']} | **Melody:** {preset['melody_instrument']}")
+        st.success(f"**Scale:** {preset['scale']} | **BPM:** {preset['bpm']} | ")
     
     # Advanced settings with the form inside
-    with st.form('Music Generation'):
+    with st.form('Price to Pitch Generation'):
         col1, col2 = st.columns([1, 1])
         with col1:
             scale_name = st.selectbox(
@@ -456,41 +469,86 @@ def music_generation_form():
         )
         
         # --- Submit button ---
-        generate_music = st.form_submit_button('🎵 Generate Music')
+        generate_music = st.form_submit_button('🎵 Generate Price-to-Pitch Music')
         
         if generate_music:
-            # Get parameters (from preset or manual)
-            if preset_name != "Custom":
-                preset = MUSICAL_PRESETS[preset_name]
-                scale_name = preset["scale"]
-                bpm = preset["bpm"]
-                note_duration = preset["note_duration"]
-                pitch_source = preset["pitch_source"]
-            
-            # Generate MIDI
-            with st.spinner("Creating MIDI file..."):
-                midi_file = create_midi_from_stock_data(
-                    state['stock_data'], scale_name, bpm, note_duration, pitch_source
-                )
-                
-                if midi_file:
-                    # Save MIDI to bytes using the robust utility
-                    midi_bytes = export_to_midi_as_bytes(midi_file)
-                    
-                    # Store in session state
-                    state['stock_song'] = midi_file
-                    state['midi_bytes'] = midi_bytes
-                    state['midi_filename'] = f"{state.get('ticker', 'stock')}_{scale_name.replace(' ', '_')}_{bpm}bpm.mid"
-                    state['composition_details'] = {
-                        'scale': scale_name,
-                        'bpm': bpm,
-                        'note_duration': note_duration,
-                        'pitch_source': pitch_source,
-                        'total_notes': len(state['stock_data']),
-                        'duration': len(state['stock_data']) * note_duration / bpm * 60
-                    }
-                    
-                    st.success("🎵 MIDI file generated successfully!")
+            generate_price_to_pitch_music(preset_name, scale_name, bpm, note_duration, pitch_source)
+
+def volatile_progression_form():
+    """Volatile progression music generation method using scale.pattern and arpeggio"""
+    st.markdown("### 🎼 Volatile Progression Method (Advanced)")
+    st.write("Generate chord progressions based on stock volatility and volume patterns, using musicpy's scale.pattern and arpeggio.")
+    
+    with st.form('Volatile Progression Generation'):
+        bpm = st.slider(
+                'BPM (Beats Per Minute)',
+                min_value=60,
+                max_value=200,
+                value=120,
+                help="Tempo of the generated music"
+        )
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            scale_name = st.selectbox(
+                'Scale',
+                options=["C major", "C minor", "D major", "E minor", "G major", "A minor"],
+                index=0,
+                help="Choose the musical scale"
+            )
+            progression_str = st.text_input(
+                'Chord Progression (scale degrees)',
+                value='1465',
+                help="Enter progression as scale degrees, e.g., 1465 for I-IV-vi-V"
+            )
+            chord_size = st.selectbox(
+                'Chord Size (num notes)',
+                options=[3, 4, 5],
+                index=1,
+                help="Number of notes per chord (triad, 7th, 9th, etc.)"
+            )
+        with col2:
+            chord_duration = st.selectbox(
+                'Chord Duration',
+                options=[1, 2, 4],
+                index=1,
+                format_func=lambda x: f"{x} bars",
+                help="Duration of each chord in bars"
+            )
+
+        
+        # --- Visualize volume and volatility ---
+        if state.get('stock_data') is not None:
+            n_chords = len(progression_str)
+            stock_data = state['stock_data']
+            volume_series = stock_data['Volume']
+            price_series = stock_data['Close']
+            chunked_volume_series, chunked_volatility_series = calculate_chunk_metrics(stock_data, n_chords)
+            chunk_size = len(stock_data) // n_chords
+            chunk_x = [stock_data.index[i*chunk_size] for i in range(n_chords)]
+            # Calculate rolling volatility for visualization
+            rolling_vol = price_series.pct_change().rolling(window=chunk_size, min_periods=1).std()
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=stock_data.index, y=volume_series, name='Volume', yaxis='y1', ))
+            fig.add_trace(go.Scatter(x=chunk_x, y=chunked_volume_series, name='Chunked Volume', yaxis='y1', mode='markers+lines', ))
+            fig.add_trace(go.Scatter(x=stock_data.index, y=rolling_vol, name='Rolling Volatility', yaxis='y2', ))
+            fig.add_trace(go.Scatter(x=chunk_x, y=chunked_volatility_series, name='Chunked Volatility', yaxis='y2', mode='markers+lines', ))
+            fig.update_layout(
+                title='Volume and Volatility (Chunked and Original)',
+                xaxis=dict(title='Date'),
+                yaxis=dict(title='Volume', side='left', showgrid=False),
+                yaxis2=dict(title='Volatility', overlaying='y', side='right', showgrid=False),
+                legend=dict(orientation='h'),
+                height=400
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        # --- Submit button ---
+        generate_music = st.form_submit_button('🎼 Generate Volatile Progression')
+        
+        if generate_music:
+            generate_volatile_progression_music_pattern(
+                scale_name, progression_str, chord_size, chord_duration, bpm
+            )
 
 def results_section():
     """Display results and download options"""
@@ -603,4 +661,230 @@ help_md = """
 - Try different presets for different moods
 - Import to FL Studio for full arrangement
 """
+
+def generate_price_to_pitch_music(preset_name, scale_name, bpm, note_duration, pitch_source):
+    """Generate music using the original price-to-pitch method"""
+    # Get parameters (from preset or manual)
+    if preset_name != "Custom":
+        preset = MUSICAL_PRESETS[preset_name]
+        scale_name = preset["scale"]
+        bpm = preset["bpm"]
+        note_duration = preset["note_duration"]
+        pitch_source = preset["pitch_source"]
+    
+    # Ensure we have valid data
+    if state['stock_data'] is None:
+        st.error("No stock data available. Please load data first.")
+        return
+    
+    # Generate MIDI
+    with st.spinner("Creating MIDI file..."):
+        midi_file = create_midi_from_stock_data(
+            state['stock_data'], scale_name, bpm, note_duration, pitch_source
+        )
+        
+        if midi_file:
+            # Save MIDI to bytes using the robust utility
+            midi_bytes = export_to_midi_as_bytes(midi_file)
+            
+            # Store in session state
+            state['stock_song'] = midi_file
+            state['midi_bytes'] = midi_bytes
+            ticker_name = state.get('ticker', 'stock')
+            if ticker_name is None:
+                ticker_name = 'stock'
+            state['midi_filename'] = f"{ticker_name}_{scale_name.replace(' ', '_')}_{bpm}bpm.mid"
+            state['composition_details'] = {
+                'scale': scale_name,
+                'bpm': bpm,
+                'note_duration': note_duration,
+                'pitch_source': pitch_source,
+                'total_notes': len(state['stock_data']),
+                'duration': len(state['stock_data']) * note_duration / bpm * 60
+            }
+            
+            st.success("🎵 MIDI file generated successfully!")
+
+def custom_arpeggiate_chord(chord, interval, total_duration):
+    notes = chord.notes  # Use the full note objects, not just names
+    n_notes = len(notes)
+    
+    # Calculate how many complete up-down cycles we can fit
+    notes_per_cycle = 2 * n_notes - 2 if n_notes > 1 else 1
+    n_cycles = int(total_duration // (interval * notes_per_cycle))
+    leftover = total_duration - n_cycles * interval * notes_per_cycle
+    
+    # Create up-down pattern: 1,2,3,4,3,2,1,2,3,4,3,2,1...
+    sequence = []
+    for cycle in range(n_cycles):
+        # Up: 0,1,2,3,4...
+        for i in range(n_notes):
+            sequence.append(notes[i])
+        # Down: n-2, ..., 1 (skip the top note to avoid repetition)
+        for i in range(n_notes - 2, 0, -1):
+            sequence.append(notes[i])
+    
+    # Handle leftover time
+    if leftover > 0:
+        n_left = int(leftover // interval)
+        if n_left > 0:
+            # Add partial up-down pattern for leftover
+            for i in range(min(n_left, n_notes)):
+                sequence.append(notes[i])
+            if n_left > n_notes:
+                for i in range(min(n_left - n_notes, n_notes - 1), 0, -1):
+                    sequence.append(notes[i])
+    
+    durations = [interval] * len(sequence)
+    intervals = [interval] * len(sequence)
+    return mp.chord(sequence) % (durations, intervals)
+
+def generate_volatile_progression_music_pattern(scale_name, progression_str, chord_size, chord_duration, bpm):
+    """Generate music using scale.pattern, volume binning for octave, volatility for arpeggio interval"""
+    if state['stock_data'] is None:
+        st.error("No stock data available. Please load data first.")
+        return
+    
+    with st.spinner("Creating volatile progression with arpeggios..."):
+        # Step 1: Get finance series
+        n_chords = len(progression_str)
+        finance_series = state['stock_data']['Close']
+        chunked_series = chunk_finance_series(finance_series, n_chords)
+        chunked_volume_series, chunked_volatility_series = calculate_chunk_metrics(state['stock_data'], n_chords)
+        
+        # Step 2: Get chords from scale pattern
+        scale_obj = mp.S(scale_name)
+        chords = scale_obj.pattern(progression_str, num=chord_size, duration=chord_duration, interval=0)
+        # chords is a list of musicpy chord objects
+        
+        # Step 3: Volume binning for octave
+        octaves = get_octave_bins(chunked_volume_series)
+        # Step 4: Volatility quantile for arpeggio interval
+        intervals = get_arpeggio_intervals(chunked_volatility_series)
+        
+        # Step 5: For each chunk, transpose chord to octave, arpeggiate with interval
+        arps = []
+        for i, chord in enumerate(chords):
+            octave = octaves[i % len(octaves)]
+            interval = intervals[i % len(intervals)]
+            
+            # Get the current root note's MIDI pitch number
+            current_root_midi = chord[0].degree
+            
+            # Get the current root note's name
+            current_root_note = chord[0].name
+            
+            # Calculate what the MIDI number should be for the target octave
+            # Use musicpy's note_to_degree to get the target MIDI number
+            target_root_midi = mp.note_to_degree(f"{current_root_note}{octave}")
+            
+            # Calculate semitones to transpose
+            semitones = target_root_midi - current_root_midi
+            chord_transposed = chord + semitones
+            arp = custom_arpeggiate_chord(chord_transposed, interval, chord_duration)
+            arps.append(arp)
+            print(arp)
+        
+        # Step 6: Combine all arpeggios into a piece
+        if arps:
+            final_piece = arps[0]
+            for arp in arps[1:]:
+                final_piece = final_piece | arp
+            final_piece.bpm = bpm
+            midi_bytes = export_to_midi_as_bytes(final_piece)
+            state['stock_song'] = final_piece
+            state['midi_bytes'] = midi_bytes
+            ticker_name = state.get('ticker', 'stock')
+            if ticker_name is None:
+                ticker_name = 'stock'
+            state['midi_filename'] = f"{ticker_name}_progression_{bpm}bpm.mid"
+            state['composition_details'] = {
+                'method': 'Volatile Progression',
+                'progression': progression_str,
+                'scale': scale_name,
+                'bpm': bpm,
+                'chord_duration': chord_duration,
+                'chord_size': chord_size,
+                'total_chunks': len(chunked_series),
+                'duration': len(chunked_series) * chord_duration * 4 / bpm * 60  # 4 beats per bar
+            }
+            st.success("🎼 Volatile progression generated successfully!")
+
+def get_octave_bins(volume_series):
+    """Map volume percentiles to octaves (C3 to C6)"""
+    percentiles = np.percentile(volume_series, [10,20,30,40,50,60,70,80,90])
+    octaves = []
+    for v in volume_series:
+        if v <= percentiles[0]:
+            octaves.append(3)
+        elif v <= percentiles[1]:
+            octaves.append(3)
+        elif v <= percentiles[2]:
+            octaves.append(4)
+        elif v <= percentiles[3]:
+            octaves.append(4)
+        elif v <= percentiles[4]:
+            octaves.append(4)
+        elif v <= percentiles[5]:
+            octaves.append(5)
+        elif v <= percentiles[6]:
+            octaves.append(5)
+        elif v <= percentiles[7]:
+            octaves.append(5)
+        else:
+            octaves.append(6)
+    return octaves
+
+def get_arpeggio_intervals(volatility_series):
+    """Map volatility quantiles to arpeggio intervals"""
+    quantiles = np.quantile(volatility_series, [0.25, 0.5, 0.75])
+    intervals = []
+    for v in volatility_series:
+        if v <= quantiles[0]:
+            intervals.append(1.0)  # whole note
+        elif v <= quantiles[1]:
+            intervals.append(0.5)  # half note
+        elif v <= quantiles[2]:
+            intervals.append(0.25)  # quarter note
+        else:
+            intervals.append(0.125)  # eighth note
+    return intervals
+
+def chunk_finance_series(series, num_chunks):
+    """Chunk the finance series into periods"""
+    chunk_size = len(series) // num_chunks
+    chunks = []
+    
+    for i in range(num_chunks):
+        start_idx = i * chunk_size
+        end_idx = start_idx + chunk_size if i < num_chunks - 1 else len(series)
+        chunk = series.iloc[start_idx:end_idx]
+        chunks.append(chunk)
+    
+    return chunks
+
+def calculate_chunk_metrics(stock_data, num_chunks):
+    """Calculate volume and volatility metrics for each chunk"""
+    volume_series = stock_data['Volume']
+    price_series = stock_data['Close']
+    
+    chunk_size = len(stock_data) // num_chunks
+    volume_metrics = []
+    volatility_metrics = []
+    
+    for i in range(num_chunks):
+        start_idx = i * chunk_size
+        end_idx = start_idx + chunk_size if i < num_chunks - 1 else len(stock_data)
+        
+        # Calculate average volume for chunk
+        chunk_volume = volume_series.iloc[start_idx:end_idx].mean()
+        volume_metrics.append(chunk_volume)
+        
+        # Calculate volatility (standard deviation of price changes)
+        chunk_prices = price_series.iloc[start_idx:end_idx]
+        price_changes = chunk_prices.pct_change().dropna()
+        volatility = price_changes.std() if len(price_changes) > 1 else 0
+        volatility_metrics.append(volatility)
+    
+    return volume_metrics, volatility_metrics
     
