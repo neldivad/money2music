@@ -20,56 +20,40 @@ from utils.parse_utils import parse_yf_df
 from utils.app_utils.midi_audio import export_to_midi_as_bytes, play_audio
 from utils.constants.ist_maps import POPULAR_INSTRUMENTS, RHYTHM_VARIANTS, PATTERN_VARIANTS
 
-# Musical scales and their MIDI note mappings
-MUSICAL_SCALES = {
-    "C Major": [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83, 84],  # C, D, E, F, G, A, B
-    "C Minor": [60, 62, 63, 65, 67, 68, 70, 72, 74, 75, 77, 79, 80, 82, 84],  # C, D, Eb, F, G, Ab, Bb
-    "C Minor Pentatonic": [60, 63, 65, 67, 70, 72, 75, 77, 79, 82, 84],  # C, Eb, F, G, Bb
-    "C Major Pentatonic": [60, 62, 64, 67, 69, 72, 74, 76, 79, 81, 84],  # C, D, E, G, A
-    "C Blues": [60, 63, 65, 66, 67, 70, 72, 75, 77, 78, 79, 82, 84],  # C, Eb, F, F#, G, Bb
-    "C Dorian": [60, 62, 63, 65, 67, 69, 70, 72, 74, 75, 77, 79, 81, 82, 84],  # C, D, Eb, F, G, A, Bb
-    "C Mixolydian": [60, 62, 64, 65, 67, 69, 70, 72, 74, 76, 77, 79, 81, 82, 84],  # C, D, E, F, G, A, Bb
-    "C Lydian": [60, 62, 64, 66, 67, 69, 71, 72, 74, 76, 78, 79, 81, 83, 84],  # C, D, E, F#, G, A, B
-}
+AVAILABLE_KEYS = list(mp.database.standard2.keys())
+AVAILABLE_MODES = mp.database.diatonic_modes
 
-# Enhanced preset configurations
-MUSICAL_PRESETS = {
-    "Ambient": {
-        "scale": "C Minor Pentatonic",
-        "bpm": 80,
-        "note_duration": 1.0,
-        "pitch_source": "Close",
-        "description": "Chill, atmospheric vibes with long, sustained notes"
-    },
-    "Electronic": {
-        "scale": "C Minor",
-        "bpm": 128,
-        "note_duration": 0.25,
-        "pitch_source": "Close",
-        "description": "High-energy electronic with sharp, rhythmic patterns"
-    },
-    "Jazz": {
-        "scale": "C Dorian",
-        "bpm": 100,
-        "note_duration": 0.5,
-        "pitch_source": "High",
-        "description": "Sophisticated jazz with swing and improvisation feel"
-    },
-    "Rock": {
-        "scale": "C Mixolydian",
-        "bpm": 140,
-        "note_duration": 0.25,
-        "pitch_source": "Close",
-        "description": "High-energy rock with driving rhythms"
-    },
-    "Blues": {
-        "scale": "C Blues",
-        "bpm": 90,
-        "note_duration": 0.5,
-        "pitch_source": "Low",
-        "description": "Soulful blues with expressive bends and slides"
-    }
-}
+def get_available_scales():
+    """Get available scales from musicpy database"""
+    try:
+        # Get scales from musicpy database
+        scales = list(mp.database.scaleTypes.keys())
+        # Filter to common scales and sort them
+        common_scales = [s for s in scales if s in ['major', 'minor', 'dorian', 'mixolydian', 'lydian', 'phrygian', 'locrian', 'pentatonic', 'blues']]
+        # Add some other interesting scales
+        other_scales = [s for s in scales if s not in common_scales and len(s) < 20]  # Avoid very long scale names
+        return common_scales + other_scales[:10]  # Limit to first 10 additional scales
+    except:
+        # Fallback to basic scales if database access fails
+        return ['major', 'minor', 'dorian', 'mixolydian', 'lydian', 'phrygian', 'locrian']
+
+def get_scale_notes(scale_name, root_note='C', octave=4):
+    """Get MIDI note numbers for a given scale"""
+    try:
+        # Create scale object using musicpy
+        scale_obj = mp.S(f"{root_note} {scale_name}")
+        # Get the notes and convert to MIDI numbers
+        notes = scale_obj.notes
+        midi_notes = [note.degree for note in notes]
+        # Extend to multiple octaves
+        extended_notes = []
+        for oct in range(octave, octave + 3):  # 3 octaves
+            for note in midi_notes:
+                extended_notes.append(note + (oct - octave) * 12)
+        return extended_notes
+    except:
+        # Fallback to basic major scale if scale creation fails
+        return [60, 62, 64, 65, 67, 69, 71, 72, 74, 76, 77, 79, 81, 83, 84]
 
 def get_stock_data(ticker, start_date, end_date):
     """Fetch stock data using yfinance with better error handling"""
@@ -173,7 +157,7 @@ def create_midi_from_stock_data(stock_data, scale_name, bpm, note_duration=0.25,
     if stock_data is None or stock_data.empty:
         return None
 
-    scale = MUSICAL_SCALES.get(scale_name, MUSICAL_SCALES["C Minor Pentatonic"])
+    scale = get_scale_notes(scale_name)
     if pitch_source == "Close":
         pitch_data = stock_data['Close']
     elif pitch_source == "High":
@@ -223,12 +207,6 @@ def main():
                 'ticker': state.get('ticker', 'None'),
                 'composition_details': state.get('composition_details', 'None')
             })
-        
-        st.markdown("### 📋 Preset Details")
-        with st.expander("Available Presets", expanded=False):
-            for preset_name, preset_data in MUSICAL_PRESETS.items():
-                st.markdown(f"**{preset_name}:**")
-                st.json(preset_data)
 
     with st.expander('Help', expanded=False):
         confused()
@@ -419,60 +397,38 @@ def music_generation_form():
         volatile_progression_form()
 
 def price_to_pitch_form():
-    """Original price-to-pitch music generation method"""
-    preset_name = st.selectbox(
-        'Quick Start Preset',
-        options=["Custom"] + list(MUSICAL_PRESETS.keys()),
-        index=0,
-        help="Choose a preset for quick setup"
-    )
-    
-    # Show preset info if selected
-    if preset_name != "Custom":
-        preset = MUSICAL_PRESETS[preset_name]
-        st.info(f"🎵 {preset_name} preset: {preset['description']}")
-        st.success(f"**Scale:** {preset['scale']} | **BPM:** {preset['bpm']} | ")
-    
-    # Advanced settings with the form inside
     with st.form('Price to Pitch Generation'):
         col1, col2 = st.columns([1, 1])
         with col1:
-            scale_name = st.selectbox(
-                'Musical Scale',
-                options=list(MUSICAL_SCALES.keys()),
-                index=2,  # Default to C Minor Pentatonic
-                help="Choose a musical scale for the composition"
-            )
-            bpm = st.slider(
-                'BPM (Beats Per Minute)',
-                min_value=60,
-                max_value=200,
-                value=120,
-                help="Tempo of the generated music"
-            )
+            selected_key = st.selectbox('Key', options=AVAILABLE_KEYS, index=AVAILABLE_KEYS.index('C'))
         with col2:
-            note_duration = st.selectbox(
-                'Note Duration',
-                options=[0.25, 0.5, 1.0, 2.0],
-                index=0,
-                format_func=lambda x: f"{x} beats",
-                help="Duration of each note in beats"
-            )
-        
-        # Data mapping
-        st.write('🎯 Data Mapping:')
+            selected_mode = st.selectbox('Mode', options=AVAILABLE_MODES, index=AVAILABLE_MODES.index('minor') if 'minor' in AVAILABLE_MODES else 0)
+        bpm = st.slider(
+            'BPM (Beats Per Minute)',
+            min_value=60,
+            max_value=200,
+            value=120,
+            help="Tempo of the generated music"
+        )
+        note_duration = st.selectbox(
+            'Note Duration',
+            options=[0.25, 0.5, 1.0, 2.0],
+            index=0,
+            format_func=lambda x: f"{x} beats",
+            help="Duration of each note in beats"
+        )
         pitch_source = st.selectbox(
             'Pitch Source',
             options=["Close", "High", "Low", "Open"],
             index=0,
             help="Which price data to use for note pitch"
         )
-        
-        # --- Submit button ---
+
         generate_music = st.form_submit_button('🎵 Generate Price-to-Pitch Music')
-        
         if generate_music:
-            generate_price_to_pitch_music(preset_name, scale_name, bpm, note_duration, pitch_source)
+            generate_price_to_pitch_music(
+                selected_key, selected_mode, bpm, note_duration, pitch_source
+            )
 
 def volatile_progression_form():
     """Volatile progression music generation method using scale.pattern and arpeggio"""
@@ -490,12 +446,8 @@ def volatile_progression_form():
         
         col1, col2 = st.columns([1, 1])
         with col1:
-            scale_name = st.selectbox(
-                'Scale',
-                options=["C major", "C minor", "D major", "E minor", "G major", "A minor"],
-                index=0,
-                help="Choose the musical scale"
-            )
+            selected_key = st.selectbox('Select key', options=AVAILABLE_KEYS, index=AVAILABLE_KEYS.index('C'))
+            
             progression_str = st.text_input(
                 'Chord Progression (scale degrees)',
                 value='1465',
@@ -508,6 +460,7 @@ def volatile_progression_form():
                 help="Number of notes per chord (triad, 7th, 9th, etc.)"
             )
         with col2:
+            selected_mode = st.selectbox('Select mode', options=AVAILABLE_MODES, index=AVAILABLE_MODES.index('minor') if 'minor' in AVAILABLE_MODES else 0)
             chord_duration = st.selectbox(
                 'Chord Duration',
                 options=[1, 2, 4],
@@ -515,8 +468,14 @@ def volatile_progression_form():
                 format_func=lambda x: f"{x} bars",
                 help="Duration of each chord in bars"
             )
+            uniform_duration = st.selectbox(
+                'Uniform Chord Duration',
+                options=[True, False],
+                index=0,
+                format_func=lambda x: "True (fill duration)" if x else "False (one arp cycle)",
+                help="True: arpeggiate to fill the full chord duration. False: complete one arpeggio cycle then move to next chord."
+            )
 
-        
         # --- Visualize volume and volatility ---
         if state.get('stock_data') is not None:
             n_chords = len(progression_str)
@@ -547,7 +506,7 @@ def volatile_progression_form():
         
         if generate_music:
             generate_volatile_progression_music_pattern(
-                scale_name, progression_str, chord_size, chord_duration, bpm
+                selected_key, selected_mode, progression_str, chord_size, chord_duration, bpm, uniform_duration
             )
 
 def results_section():
@@ -557,16 +516,33 @@ def results_section():
         
         # Show composition details
         st.write("### 🎼 Composition Details")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Scale", str(details.get('scale', 'Unknown')))
-            st.metric("BPM", int(details.get('bpm', 0)))
-        with col2:
-            duration = details.get('duration', 0)
-            st.metric("Duration", f"{duration:.1f}s" if isinstance(duration, (int, float)) else "N/A")
-            st.metric("Total Notes", int(details.get('total_notes', 0)))
-        with col3:
-            st.metric("Pitch Source", str(details.get('pitch_source', 'Unknown')))
+        
+        # Check if it's volatile progression or price-to-pitch
+        method = details.get('method', 'Price to Pitch')
+        
+        if method == 'Volatile Progression':
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Method", str(details.get('method', 'Unknown')))
+                st.metric("Progression", str(details.get('progression', 'Unknown')))
+            with col2:
+                st.metric("Key", str(details.get('key', 'Unknown')))
+                st.metric("Mode", str(details.get('mode', 'Unknown')))
+            with col3:
+                st.metric("Chord Size", int(details.get('chord_size', 0)))
+                st.metric("Total Chunks", int(details.get('total_chunks', 0)))
+        else:
+            # Price to Pitch method
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Key", str(details.get('key', 'Unknown')))
+                st.metric("Mode", str(details.get('mode', 'Unknown')))
+            with col2:
+                st.metric("BPM", int(details.get('bpm', 0)))
+            with col3:
+                duration = details.get('duration', 0)
+                st.metric("Duration", f"{duration:.1f}s" if isinstance(duration, (int, float)) else "N/A")
+                st.metric("Total Notes", int(details.get('total_notes', 0)))
 
         # Plot chords
         fig = plot_chords(state['stock_song'], start_time=0, end_time=48)
@@ -662,61 +638,84 @@ help_md = """
 - Import to FL Studio for full arrangement
 """
 
-def generate_price_to_pitch_music(preset_name, scale_name, bpm, note_duration, pitch_source):
-    """Generate music using the original price-to-pitch method"""
-    # Get parameters (from preset or manual)
-    if preset_name != "Custom":
-        preset = MUSICAL_PRESETS[preset_name]
-        scale_name = preset["scale"]
-        bpm = preset["bpm"]
-        note_duration = preset["note_duration"]
-        pitch_source = preset["pitch_source"]
-    
-    # Ensure we have valid data
+def generate_price_to_pitch_music(selected_key, selected_mode, bpm, note_duration, pitch_source):
     if state['stock_data'] is None:
         st.error("No stock data available. Please load data first.")
         return
-    
-    # Generate MIDI
-    with st.spinner("Creating MIDI file..."):
-        midi_file = create_midi_from_stock_data(
-            state['stock_data'], scale_name, bpm, note_duration, pitch_source
-        )
-        
-        if midi_file:
-            # Save MIDI to bytes using the robust utility
-            midi_bytes = export_to_midi_as_bytes(midi_file)
-            
-            # Store in session state
-            state['stock_song'] = midi_file
-            state['midi_bytes'] = midi_bytes
-            ticker_name = state.get('ticker', 'stock')
-            if ticker_name is None:
-                ticker_name = 'stock'
-            state['midi_filename'] = f"{ticker_name}_{scale_name.replace(' ', '_')}_{bpm}bpm.mid"
-            state['composition_details'] = {
-                'scale': scale_name,
-                'bpm': bpm,
-                'note_duration': note_duration,
-                'pitch_source': pitch_source,
-                'total_notes': len(state['stock_data']),
-                'duration': len(state['stock_data']) * note_duration / bpm * 60
-            }
-            
-            st.success("🎵 MIDI file generated successfully!")
 
-def custom_arpeggiate_chord(chord, interval, total_duration):
+    # Create the scale using musicpy
+    try:
+        scale_obj = mp.S(f"{selected_key} {selected_mode}")
+        scale_notes = [note.degree for note in scale_obj.notes]
+    except Exception as e:
+        st.error(f"Error creating scale: {e}")
+        return
+
+    pitch_data = state['stock_data'][pitch_source]
+    pitch_min, pitch_max = pitch_data.min(), pitch_data.max()
+
+    chord_parts = []
+    for index, row in state['stock_data'].iterrows():
+        price_normalized = normalize_data(pitch_data[index], pitch_min, pitch_max, 0, len(scale_notes) - 1)
+        scale_index = int(price_normalized)
+        scale_index = max(0, min(scale_index, len(scale_notes) - 1))
+        note_pitch = scale_notes[scale_index]
+        note_name = mp.degree_to_note(note_pitch)
+        chord_parts.append(f'{note_name}[{note_duration};.]')
+
+    chord_string = ', '.join(chord_parts)
+    piece = mp.chord(chord_string)
+    midi_bytes = export_to_midi_as_bytes(piece)
+    state['stock_song'] = piece
+    state['midi_bytes'] = midi_bytes
+    ticker_name = state.get('ticker', 'stock')
+    if ticker_name is None:
+        ticker_name = 'stock'
+    state['midi_filename'] = f"{ticker_name}_{selected_key}_{selected_mode}_{bpm}bpm.mid"
+    state['composition_details'] = {
+        'key': selected_key,
+        'mode': selected_mode,
+        'bpm': bpm,
+        'note_duration': note_duration,
+        'pitch_source': pitch_source,
+        'total_notes': len(state['stock_data']),
+        'duration': len(state['stock_data']) * note_duration / bpm * 60
+    }
+    st.success("🎵 MIDI file generated successfully!")
+
+def custom_arpeggiate_chord(chord, interval, total_duration, uniform_duration=True):
     notes = chord.notes  # Use the full note objects, not just names
     n_notes = len(notes)
     
-    # Calculate how many complete up-down cycles we can fit
-    notes_per_cycle = 2 * n_notes - 2 if n_notes > 1 else 1
-    n_cycles = int(total_duration // (interval * notes_per_cycle))
-    leftover = total_duration - n_cycles * interval * notes_per_cycle
-    
-    # Create up-down pattern: 1,2,3,4,3,2,1,2,3,4,3,2,1...
-    sequence = []
-    for cycle in range(n_cycles):
+    if uniform_duration:
+        # Calculate how many complete up-down cycles we can fit
+        notes_per_cycle = 2 * n_notes - 2 if n_notes > 1 else 1
+        n_cycles = int(total_duration // (interval * notes_per_cycle))
+        leftover = total_duration - n_cycles * interval * notes_per_cycle
+        
+        # Create up-down pattern: 1,2,3,4,3,2,1,2,3,4,3,2,1...
+        sequence = []
+        for cycle in range(n_cycles):
+            # Up: 0,1,2,3,4...
+            for i in range(n_notes):
+                sequence.append(notes[i])
+            # Down: n-2, ..., 1 (skip the top note to avoid repetition)
+            for i in range(n_notes - 2, 0, -1):
+                sequence.append(notes[i])
+        
+        # Handle leftover time
+        if leftover > 0:
+            n_left = int(leftover // interval)
+            if n_left > 0:
+                # Add partial up-down pattern for leftover
+                for i in range(min(n_left, n_notes)):
+                    sequence.append(notes[i])
+                if n_left > n_notes:
+                    for i in range(min(n_left - n_notes, n_notes - 1), 0, -1):
+                        sequence.append(notes[i])
+    else:
+        # Just do one complete up-down cycle and ignore leftover time
+        sequence = []
         # Up: 0,1,2,3,4...
         for i in range(n_notes):
             sequence.append(notes[i])
@@ -724,22 +723,11 @@ def custom_arpeggiate_chord(chord, interval, total_duration):
         for i in range(n_notes - 2, 0, -1):
             sequence.append(notes[i])
     
-    # Handle leftover time
-    if leftover > 0:
-        n_left = int(leftover // interval)
-        if n_left > 0:
-            # Add partial up-down pattern for leftover
-            for i in range(min(n_left, n_notes)):
-                sequence.append(notes[i])
-            if n_left > n_notes:
-                for i in range(min(n_left - n_notes, n_notes - 1), 0, -1):
-                    sequence.append(notes[i])
-    
     durations = [interval] * len(sequence)
     intervals = [interval] * len(sequence)
     return mp.chord(sequence) % (durations, intervals)
 
-def generate_volatile_progression_music_pattern(scale_name, progression_str, chord_size, chord_duration, bpm):
+def generate_volatile_progression_music_pattern(selected_key, selected_mode, progression_str, chord_size, chord_duration, bpm, uniform_duration):
     """Generate music using scale.pattern, volume binning for octave, volatility for arpeggio interval"""
     if state['stock_data'] is None:
         st.error("No stock data available. Please load data first.")
@@ -752,8 +740,8 @@ def generate_volatile_progression_music_pattern(scale_name, progression_str, cho
         chunked_series = chunk_finance_series(finance_series, n_chords)
         chunked_volume_series, chunked_volatility_series = calculate_chunk_metrics(state['stock_data'], n_chords)
         
-        # Step 2: Get chords from scale pattern
-        scale_obj = mp.S(scale_name)
+        # Step 2: Get chords from scale pattern using musicpy's database
+        scale_obj = mp.S(f"{selected_key} {selected_mode}")
         chords = scale_obj.pattern(progression_str, num=chord_size, duration=chord_duration, interval=0)
         # chords is a list of musicpy chord objects
         
@@ -767,21 +755,12 @@ def generate_volatile_progression_music_pattern(scale_name, progression_str, cho
         for i, chord in enumerate(chords):
             octave = octaves[i % len(octaves)]
             interval = intervals[i % len(intervals)]
-            
-            # Get the current root note's MIDI pitch number
             current_root_midi = chord[0].degree
-            
-            # Get the current root note's name
             current_root_note = chord[0].name
-            
-            # Calculate what the MIDI number should be for the target octave
-            # Use musicpy's note_to_degree to get the target MIDI number
             target_root_midi = mp.note_to_degree(f"{current_root_note}{octave}")
-            
-            # Calculate semitones to transpose
             semitones = target_root_midi - current_root_midi
             chord_transposed = chord + semitones
-            arp = custom_arpeggiate_chord(chord_transposed, interval, chord_duration)
+            arp = custom_arpeggiate_chord(chord_transposed, interval, chord_duration, uniform_duration)
             arps.append(arp)
         
         # Step 6: Combine all arpeggios into a piece
@@ -800,7 +779,8 @@ def generate_volatile_progression_music_pattern(scale_name, progression_str, cho
             state['composition_details'] = {
                 'method': 'Volatile Progression',
                 'progression': progression_str,
-                'scale': scale_name,
+                'key': selected_key,
+                'mode': selected_mode,
                 'bpm': bpm,
                 'chord_duration': chord_duration,
                 'chord_size': chord_size,
